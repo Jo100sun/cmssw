@@ -24,20 +24,17 @@
 #include "RecoMuon/TrackingTools/interface/MuonServiceProxy.h"
 #include "TTree.h"
 
-struct EW {
-  uint64_t errors;
-  uint64_t warnings;
-};
-
 class GEMTnPEfficiencyTask : public BaseTnPEfficiencyTask {
 public:
   /// Constructor
   GEMTnPEfficiencyTask(const edm::ParameterSet& config);
-  EW maskChamberWithError(const GEMDetId& chamber_id,
+  void maskChamberWithError(const GEMDetId& chamber_id,
                                 const GEMOHStatusCollection*,
                                 const GEMVFATStatusCollection*,
                                 const GEMAMCStatusCollection*,
-                                const GEMAMC13StatusCollection*);
+                                const GEMAMC13StatusCollection*,
+                                uint64_t& errors,
+                                uint64_t& warnings);
   bool checkBounds(const GeomDet* geomDet, const GlobalPoint& global_position, const float bordercut);
   bool checkEta(const GEMRecHitCollection& rechit_collection, const reco::MuonGEMHitMatch gemHit, const int ieta, const GEMDetId& gem_id);
   /// Destructor
@@ -1314,13 +1311,13 @@ void GEMTnPEfficiencyTask::bookHistograms(DQMStore::IBooker& iBooker,
 }
 
 
-EW GEMTnPEfficiencyTask::maskChamberWithError(const GEMDetId& chamber_id,
+void GEMTnPEfficiencyTask::maskChamberWithError(const GEMDetId& chamber_id,
                                                     const GEMOHStatusCollection* oh_status_collection,
                                                     const GEMVFATStatusCollection* vfat_status_collection,
                                                     const GEMAMCStatusCollection* amc_status_collection,
-                                                    const GEMAMC13StatusCollection* amc13_status_collection) {
-  uint64_t warnings = 0;
-  uint64_t errors = 0;
+                                                    const GEMAMC13StatusCollection* amc13_status_collection,
+                                                    uint64_t& errors,
+                                                    uint64_t& warnings) {
   bool amc13_exists = false;
   bool amc_exists = false;
   bool oh_exists = false;
@@ -1429,10 +1426,7 @@ EW GEMTnPEfficiencyTask::maskChamberWithError(const GEMDetId& chamber_id,
       errors = errors | 1; // 8 1 16 1 16 1 1 8 1
     }
   }
-  EW ew;
-  ew.errors = errors;
-  ew.warnings = warnings;
-  return ew;
+  return;
   }
 
 bool GEMTnPEfficiencyTask::checkBounds(const GeomDet* geomDet,
@@ -1502,21 +1496,12 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
   GEMRecHitCollection rechit_collection;
   edm::Handle<GEMRecHitCollection> rechit_collection_handle;
   event.getByToken(m_GEMRecHitCollectionToken_, rechit_collection_handle);
-    rechit_collection = *rechit_collection_handle;
-  // event.getByToken(kGEMVFATStatusCollectionToken_, vfat_status_collection);
-  // if (vfat_status_collection.isValid()) {
-  //   vfat_status = *vfat_status_collection;
-  // } else {
-  //   LogTrace("DQMOffline|MuonDPG|BaseTnPEfficiencyTask") << "failed to get GEMVFATStatusCollection" << std::endl;
-  //   return;
-  // }
-  // }
+  rechit_collection = *rechit_collection_handle;
   edm::Handle<reco::MuonCollection> muons;
   event.getByToken(m_muToken, muons);
 
   //GE11 variables
   std::vector<std::vector<int>> probe_coll_GE11_region;
-  std::vector<std::vector<bool>> probe_coll_GE11_etamatched;
   std::vector<std::vector<int>> probe_coll_GE11_lay;
   std::vector<std::vector<int>> probe_coll_GE11_chamber;
   std::vector<std::vector<float>> probe_coll_GE11_pt;
@@ -1565,7 +1550,6 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
   for (const auto i : probe_indices) {
     //GE11 variables
     std::vector<int> probe_GE11_region;
-    std::vector<bool> probe_GE11_etamatched;
     std::vector<int> probe_GE11_sta;
     std::vector<int> probe_GE11_lay;
     std::vector<int> probe_GE11_chamber;
@@ -1588,7 +1572,6 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
     std::vector<float> probe_GE21_dx;
     std::vector<uint64_t> probe_GE21_warnings;
     std::vector<uint64_t> probe_GE21_errors;
-    //std::vector<float> probe_GEM_dx_seg;
     uint8_t GEM_stationMatching = 0;
     //ME0 variables
     std::vector<int> probe_ME0_region;
@@ -1614,9 +1597,9 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
           gem_matched = true;  //fill detailed plots if at least one GEM probe match
 
           GEMDetId chId(chambMatch.id.rawId());
-          const EW ew = maskChamberWithError(chId, &oh_status, &vfat_status, &amc_status, &amc13_status);
-          uint64_t warnings = ew.warnings;
-          uint64_t errors = ew.errors;
+          uint64_t warnings;
+          uint64_t errors;
+          maskChamberWithError(chId, &oh_status, &vfat_status, &amc_status, &amc13_status, errors, warnings);
           const int roll = chId.roll();
           const int region = chId.region();
           const int station = chId.station();
@@ -1651,7 +1634,7 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
 
             for (auto& gemHit : chambMatch.gemHitMatches) {
               float dx = std::abs(chambMatch.x - gemHit.x);
-              if (dx < smallestDx) {
+              if (dx < smallestDx && checkEta(rechit_collection, gemHit, ieta, chId)) {
                 smallestDx = dx;
                 closest_matchedHit = gemHit;
                 matched_GEMHit_x = gemHit.x;
@@ -1659,11 +1642,8 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
               }
             }
 
-            bool eta_matched = checkEta(rechit_collection, closest_matchedHit, ieta, chId);
-            hit_matched = eta_matched && hit_matched;
             if (station == 1) {
               probe_GE11_region.push_back(region);
-              probe_GE11_etamatched.push_back(eta_matched);
               probe_GE11_sta.push_back(station);
               probe_GE11_lay.push_back(layer);
               probe_GE11_chamber.push_back(chamber);
@@ -1747,16 +1727,10 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
       m_histos.find("probePhi")->second->Fill((*muons).at(i).phi());
       m_histos.find("probeNumberOfMatchedStations")->second->Fill((*muons).at(i).numberOfMatchedStations());
       m_histos.find("probePt")->second->Fill((*muons).at(i).pt());
-      //for(int ii=0; i<probe_GEM_dx.size(); ii++)
-      //{
-      //    m_histos.find("GEMhit_dx")->second->Fill(probe_GEM_dx[ii]);
-      //    m_histos.find("GEMseg_dx")->second->Fill(probe_GEM_dx_seg[ii]);
-      //}
     }
 
     //Fill GEM variables
     probe_coll_GE11_region.push_back(probe_GE11_region);
-    probe_coll_GE11_etamatched.push_back(probe_GE11_etamatched);
     probe_coll_GE11_sta.push_back(probe_GE11_sta);
     probe_coll_GE11_lay.push_back(probe_GE11_lay);
     probe_coll_GE11_chamber.push_back(probe_GE11_chamber);
@@ -1801,21 +1775,14 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
 
   //Loop over probes
   for (unsigned i = 0; i < probe_indices.size(); ++i) {
-    //uint8_t GEM_matchPatt = probe_coll_GEM_staMatch.at(i);  // ME0 to 0b0001, GE11 to 0b0010, GE21 to 0b0100
 
     //Loop over ME0 matches
     unsigned nME0_matches = probe_coll_ME0_region.at(i).size();
     for (unsigned j = 0; j < nME0_matches; ++j) {
       //ME0 variables
       int ME0_region = probe_coll_ME0_region.at(i).at(j);
-      //int ME0_roll   = probe_coll_ME0_roll.at(i).at(j);
-      //int ME0_sta = probe_coll_ME0_sta.at(i).at(j);
-      //int ME0_lay    = probe_coll_ME0_lay.at(i).at(j);
       int ME0_chamber = probe_coll_ME0_chamber.at(i).at(j);
-      //float ME0_pt   = probe_coll_ME0_pt.at(i).at(j);
       float ME0_dx = probe_coll_ME0_dx.at(i).at(j);
-      //float ME0_eta   = probe_coll_ME0_eta.at(i).at(j);
-      //float ME0_phi   = probe_coll_ME0_phi.at(i).at(j);
 
       if (ME0_dx < m_dxCut) {
         m_histos.find("ME0_nPassingProbe_chamber_1D")->second->Fill(ME0_chamber);
@@ -1838,7 +1805,6 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
     for (unsigned j = 0; j < nGE11_matches; ++j) {
       //GEM variables
       int GEM_region = probe_coll_GE11_region.at(i).at(j);
-      int GEM_etamatched = probe_coll_GE11_etamatched.at(i).at(j);
       int GEM_sta = probe_coll_GE11_sta.at(i).at(j);
       int GEM_lay = probe_coll_GE11_lay.at(i).at(j);
       int GEM_chamber = probe_coll_GE11_chamber.at(i).at(j);
@@ -1851,13 +1817,7 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
       uint64_t GEM_warning = probe_coll_GE11_warnings.at(i).at(j);
       uint64_t GEM_error = probe_coll_GE11_errors.at(i).at(j);
       //Fill GEM plots
-      if (GEM_dx < m_dxCut && GEM_etamatched) {
-        //std::cout << "GE11 PASS - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        //LogTrace("DQMOffline|MuonDPG|GEMTnPEfficiencyTask") << "GE11 PASS - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        // std::ostringstream oss;
-        // oss << "GE11 PASS - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        // str_list = oss.str();
-        // tree->Fill();
+      if (GEM_dx < m_dxCut) {
         m_histos.find("GE11_nPassingProbe_Ch_region")->second->Fill(GEM_region, GEM_chamber);
         m_histos.find("GE11_nPassingProbe_Ch_ieta")->second->Fill(GEM_ieta, GEM_chamber);
         m_histos.find("GE11_nPassingProbe_Ch_phi")->second->Fill(GEM_phi, GEM_chamber);
@@ -2031,12 +1991,6 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
           }
         }
       } else {
-        // std::cout << "GE11 FAIL - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        // LogTrace("DQMOffline|MuonDPG|GEMTnPEfficiencyTask") << "GE11 FAIL - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        // std::ostringstream oss;
-        // oss << "GE11 FAIL - Re:" << GEM_region << " Ch:" << GEM_chamber << " ieta:" << GEM_ieta <<  " La:" << GEM_lay << " err:" << GEM_error << " warning:" << GEM_warning << std::endl;
-        // str_list = oss.str();
-        // tree->Fill();
         m_histos.find("GE11_nFailingProbe_Ch_region")->second->Fill(GEM_region, GEM_chamber);
         m_histos.find("GE11_nFailingProbe_Ch_ieta")->second->Fill(GEM_ieta, GEM_chamber);
         m_histos.find("GE11_nFailingProbe_Ch_phi")->second->Fill(GEM_phi, GEM_chamber);
