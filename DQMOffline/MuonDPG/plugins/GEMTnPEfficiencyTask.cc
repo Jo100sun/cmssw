@@ -36,7 +36,7 @@ public:
                                 uint64_t& errors,
                                 uint64_t& warnings);
   bool checkBounds(const GeomDet* geomDet, const GlobalPoint& global_position, const float bordercut);
-  bool checkEta(const GEMRecHitCollection& rechit_collection, const reco::MuonGEMHitMatch gemHit, const int ieta, const GEMDetId& gem_id);
+  bool checkEta(const reco::MuonGEMHitMatch gemHit, const int ieta, const GEMDetId& gem_id);
   /// Destructor
   ~GEMTnPEfficiencyTask() override;
 
@@ -1447,25 +1447,19 @@ bool GEMTnPEfficiencyTask::checkBounds(const GeomDet* geomDet,
   return false;
 }
 
-bool GEMTnPEfficiencyTask::checkEta(const GEMRecHitCollection& rechit_collection,
-                                    const reco::MuonGEMHitMatch gemHit,
+bool GEMTnPEfficiencyTask::checkEta(const reco::MuonGEMHitMatch gemHit,
                                     const int ieta,
                                     const GEMDetId& gem_id) {
-  for (int i=1;i<9;i++){
-    GEMDetId etapartition_id = GEMDetId(gem_id.region(),
-                     gem_id.ring(),
-                     gem_id.station(),
-                     gem_id.layer(),
-                     gem_id.chamber(),
-                     i);
-    const GEMRecHitCollection::range& rechit_range = rechit_collection.get(etapartition_id);
-    for (auto hit = rechit_range.first; hit != rechit_range.second; ++hit) {
-      if (ieta == hit->gemId().ieta() && hit->localPosition().x() == gemHit.x) {
-        return true;
-      }
-    }
+  GEMDetId etapartition_id = GEMDetId(gem_id.region(),
+                    gem_id.ring(),
+                    gem_id.station(),
+                    gem_id.layer(),
+                    gem_id.chamber(),
+                    ieta);
+  if (etapartition_id.rawId() != gemHit.theGEMId.rawId()) {
+    return false;
   }
-  return false;
+  return true;
 }
 
 void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetup& context) {
@@ -1634,7 +1628,7 @@ void GEMTnPEfficiencyTask::analyze(const edm::Event& event, const edm::EventSetu
 
             for (auto& gemHit : chambMatch.gemHitMatches) {
               float dx = std::abs(chambMatch.x - gemHit.x);
-              if (dx < smallestDx && checkEta(rechit_collection, gemHit, ieta, chId)) {
+              if (dx < smallestDx && checkEta(gemHit, ieta, chId)) {
                 smallestDx = dx;
                 closest_matchedHit = gemHit;
                 matched_GEMHit_x = gemHit.x;
