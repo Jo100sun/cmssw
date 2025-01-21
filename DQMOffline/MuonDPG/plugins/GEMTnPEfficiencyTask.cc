@@ -1448,13 +1448,7 @@ bool GEMTnPEfficiencyTask::checkBounds(const GeomDet* geomDet,
 bool GEMTnPEfficiencyTask::checkEta(const reco::MuonGEMHitMatch gemHit,
                                     const int ieta,
                                     const GEMDetId& gem_id) {
-  GEMDetId etapartition_id = GEMDetId(gem_id.region(),
-                    gem_id.ring(),
-                    gem_id.station(),
-                    gem_id.layer(),
-                    gem_id.chamber(),
-                    ieta);
-  if (etapartition_id != gemHit.theGEMId) {
+  if (ieta != gemHit.ieta) {
     return false;
   }
   return true;
