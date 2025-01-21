@@ -1454,7 +1454,7 @@ bool GEMTnPEfficiencyTask::checkEta(const reco::MuonGEMHitMatch gemHit,
                     gem_id.layer(),
                     gem_id.chamber(),
                     ieta);
-  if (etapartition_id.rawId() != gemHit.theGEMId) {
+  if (etapartition_id != gemHit.theGEMId) {
     return false;
   }
   return true;
