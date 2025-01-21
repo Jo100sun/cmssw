@@ -76,8 +76,6 @@ GEMTnPEfficiencyTask::GEMTnPEfficiencyTask(const edm::ParameterSet& config)
   LogTrace("DQMOffline|MuonDPG|GEMTnPEfficiencyTask") << "[GEMTnPEfficiencyTask]: Constructor" << std::endl;
   muon_service_ = std::make_unique<MuonServiceProxy>(config.getParameter<edm::ParameterSet>("ServiceParameters"),
                                                      consumesCollector());
-  // tree = fs->make<TTree>("tree", "A tree with a list");
-  // tree->Branch("str_list", &str_list);
 }
 
 GEMTnPEfficiencyTask::~GEMTnPEfficiencyTask() {
@@ -1456,7 +1454,7 @@ bool GEMTnPEfficiencyTask::checkEta(const reco::MuonGEMHitMatch gemHit,
                     gem_id.layer(),
                     gem_id.chamber(),
                     ieta);
-  if (etapartition_id.rawId() != gemHit.theGEMId.rawId()) {
+  if (etapartition_id.rawId() != gemHit.theGEMId) {
     return false;
   }
   return true;

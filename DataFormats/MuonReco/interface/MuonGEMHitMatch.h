@@ -9,9 +9,9 @@ namespace reco {
     float x;            // X position of the matched segment
     unsigned int mask;  // arbitration mask
     int bx;             // bunch crossing
-    GEMDetId theGEMId;     // gem id
+    uint32_t theGEMId;     // gem raw id
 
-    MuonGEMHitMatch() : x(0), mask(0), bx(0), theGEMId() {}
+    MuonGEMHitMatch() : x(0), mask(0), bx(0), theGEMId(0) {}
   };
 }  // namespace reco
 
